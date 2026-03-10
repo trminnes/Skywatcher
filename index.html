@@ -2259,19 +2259,20 @@ function setStatus(msg, isError) {
   el.className = 'setup-status' + (isError ? ' error' : msg.startsWith('✓') ? ' saved' : '');
 }
 
-/*
-  ═══════════════════════════════════════════════════
-  PRODUCTION API WIRING — Ambient Weather WS-2902
-  ═══════════════════════════════════════════════════
-  Uncomment the block below (and remove this comment + the closing comment)
-  once your Ambient Weather API keys are saved in Setup → API & Station.
-  The fetchWeather() function reads keys from localStorage automatically.
-
-  async function fetchWeather() {
-    const cfg = loadSavedApiKeys();
-    if (!cfg.appKey || !cfg.apiKey) return;
+// ═══════════════════════════════════════════════════
+// PRODUCTION API WIRING — Ambient Weather WS-2902
+// ═══════════════════════════════════════════════════
+async function fetchWeather() {
+  const cfg = loadSavedApiKeys();
+  if (!cfg.appKey || !cfg.apiKey) {
+    console.warn('Skywatcher: No API keys found. Enter them in Setup → API & Station.');
+    return;
+  }
+  try {
     const res  = await fetch(`https://api.ambientweather.net/v1/devices?applicationKey=${cfg.appKey}&apiKey=${cfg.apiKey}`);
+    if (!res.ok) { console.error('Skywatcher: API error', res.status, res.statusText); return; }
     const json = await res.json();
+    if (!json || !json[0] || !json[0].lastData) { console.error('Skywatcher: Unexpected API response', json); return; }
     const d    = json[0].lastData;
     weatherData.tempF        = d.tempf;
     weatherData.feelsLikeF   = d.feelsLike;
@@ -2299,11 +2300,13 @@ function setStatus(msg, isError) {
     else currentCond='sunny';
     renderScene(currentCond, currentTheme);
     updateStats();
+  } catch(err) {
+    console.error('Skywatcher: fetchWeather failed —', err);
   }
-  const apiCfg = loadSavedApiKeys();
-  fetchWeather();
-  setInterval(fetchWeather, (apiCfg.refreshSec || 60) * 1000);
-*/
+}
+const apiCfg = loadSavedApiKeys();
+fetchWeather();
+setInterval(fetchWeather, (apiCfg.refreshSec || 60) * 1000);
 
 // Hide scroll hint initially; it shows once forecast data loads
 (function() {
