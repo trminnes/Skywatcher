@@ -996,71 +996,96 @@ const toC = f => Math.round((f-32)*5/9);
 const fmt = f => useFahrenheit ? Math.round(f) : toC(f);
 const uL  = ()  => useFahrenheit ? '°F' : '°C';
 
-// Safe display helpers
-const safeNum = (v, fb) => (v == null || (typeof v==='number' && isNaN(v))) ? (fb||'—') : v;
-const safeFmt = (v, fb) => (v == null || (typeof v==='number' && isNaN(v))) ? (fb||'—') : fmt(v);
-const safeFix = (v, dec, fb) => (v == null || (typeof v==='number' && isNaN(v))) ? (fb||'—') : Number(v).toFixed(dec||2);
+// NaN-safe helpers
+const safeN = (v, fb) => (v == null || (typeof v === 'number' && isNaN(v))) ? (fb !== undefined ? fb : '—') : v;
+const safeF = (v, fb) => (v == null || (typeof v === 'number' && isNaN(v))) ? (fb !== undefined ? fb : '—') : fmt(v);
+const safeX = (v, dec) => (v == null || (typeof v === 'number' && isNaN(v))) ? '—' : Number(v).toFixed(dec || 2);
 
 function updateStats() {
   const d = weatherData, u = uL();
-  document.getElementById('tempDisplay').textContent = safeFmt(d.tempF);
-  const hiStr = (d.highF != null && !isNaN(d.highF)) ? 'High '+fmt(d.highF)+'°' : '';
-  const loStr = (d.lowF  != null && !isNaN(d.lowF))  ? 'Low '+fmt(d.lowF)+'°'  : '';
-  const hlStr = [hiStr, loStr].filter(Boolean).join(' · ');
+
+  // Hero temperature
+  document.getElementById('tempDisplay').textContent = safeF(d.tempF);
+  const hiStr = (d.highF != null && !isNaN(d.highF)) ? 'High ' + fmt(d.highF) + '°' : '';
+  const loStr = (d.lowF  != null && !isNaN(d.lowF))  ? 'Low '  + fmt(d.lowF)  + '°' : '';
+  const hlPart = [hiStr, loStr].filter(Boolean).join(' · ');
   document.getElementById('feelsDisplay').textContent =
-    'Feels like '+safeFmt(d.feelsLikeF)+u + (hlStr ? ' · '+hlStr : '');
-  const hum = (d.humidity != null && !isNaN(d.humidity)) ? d.humidity : 0;
-  document.getElementById('humVal').innerHTML = safeNum(d.humidity)+'<sup>%</sup>';
-  const humDesc = hum<30?'Very dry':hum<50?'Comfortable':hum<70?'Moderate':'Humid';
-  document.getElementById('humDesc').textContent = humDesc;
-  document.getElementById('humBar').style.width = hum+'%';
-  document.getElementById('humArc').style.strokeDashoffset = 107-(107*hum/100);
-  const dirs=['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
-  const windDeg = (d.windDeg != null && !isNaN(d.windDeg)) ? d.windDeg : 0;
-  const dir = dirs[Math.round(windDeg/22.5)%16]||'—';
-  const wspd = (d.windSpeedMph != null && !isNaN(d.windSpeedMph)) ? d.windSpeedMph : 0;
-  const wgst = (d.windGustMph  != null && !isNaN(d.windGustMph))  ? d.windGustMph  : 0;
+    'Feels like ' + safeF(d.feelsLikeF) + u + (hlPart ? ' · ' + hlPart : '');
+
+  // Humidity
+  const hum = (d.humidity != null && !isNaN(d.humidity)) ? Number(d.humidity) : 0;
+  document.getElementById('humVal').innerHTML = safeN(d.humidity) + '<sup>%</sup>';
+  document.getElementById('humDesc').textContent = hum<30?'Very dry':hum<50?'Comfortable':hum<70?'Moderate':'Humid';
+  document.getElementById('humBar').style.width = hum + '%';
+  document.getElementById('humArc').style.strokeDashoffset = 107 - (107 * hum / 100);
+
+  // Wind
+  const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+  const wdeg = (d.windDeg != null && !isNaN(d.windDeg)) ? Number(d.windDeg) : 0;
+  const wspd = (d.windSpeedMph != null && !isNaN(d.windSpeedMph)) ? Number(d.windSpeedMph) : 0;
+  const wgst = (d.windGustMph  != null && !isNaN(d.windGustMph))  ? Number(d.windGustMph)  : 0;
+  const wdir = dirs[Math.round(wdeg / 22.5) % 16] || '—';
   document.getElementById('windVal').innerHTML = useFahrenheit
-    ? safeNum(d.windSpeedMph)+'<sup>mph</sup>'
-    : Math.round(wspd*1.609)+'<sup>km/h</sup>';
+    ? safeN(d.windSpeedMph) + '<sup>mph</sup>'
+    : Math.round(wspd * 1.609) + '<sup>km/h</sup>';
   document.getElementById('windDir').textContent =
-    dir+' · Gust '+(useFahrenheit ? wgst+' mph' : Math.round(wgst*1.609)+' km/h');
-  document.getElementById('compassNeedle').style.transform='rotate('+windDeg+'deg)';
-  document.getElementById('pressVal').innerHTML=safeNum(d.pressureInHg)+'<sup>inHg</sup>';
-  document.getElementById('pressTrend').textContent={rising:'▲ Rising Steady',falling:'▼ Falling',steady:'— Steady'}[d.pressureTrend]||'— Steady';
-  const uv = (d.uvIndex != null && !isNaN(d.uvIndex)) ? d.uvIndex : 0;
-  document.getElementById('uvVal').textContent=safeNum(d.uvIndex);
-  const uvD=['Minimal','Low','Low','Moderate','Moderate','High','High','Very High','Very High','Very High','Extreme'];
-  document.getElementById('uvDesc').textContent=(uvD[uv]||'High')+(uv>=3?' · SPF advised':'');
-  document.getElementById('uvBar').style.width=(uv/11*100)+'%';
-  const solar=(d.solarWm2!=null&&!isNaN(d.solarWm2))?d.solarWm2:0;
-  const solarMax=(d.solarMaxWm2>0)?d.solarMaxWm2:1000;
-  document.getElementById('solarVal').innerHTML=safeNum(d.solarWm2)+'<sup>W/m²</sup>';
-  document.getElementById('solarBar').style.width=Math.min(100,(solar/solarMax*100))+'%';
-  document.getElementById('rainRateVal').innerHTML=safeFix(d.rainRateInHr)+'<sup>in/hr</sup>';
-  document.getElementById('rainTotal').textContent=
-    'Today: '+safeFix(d.rainTodayIn)+' in · Monthly: '+safeFix(d.rainMonthlyIn)+' in';
-  document.getElementById('dewVal').innerHTML=safeFmt(d.dewPointF)+'<sup>'+u+'</sup>';
-  const dp=useFahrenheit?(d.dewPointF||0):toC(d.dewPointF||32);
-  document.getElementById('dewDesc').textContent=dp<(useFahrenheit?50:10)?'Dry & comfortable':dp<(useFahrenheit?60:15.5)?'Slightly humid':dp<(useFahrenheit?65:18)?'Humid':'Muggy';
-  document.getElementById('indoorVal').innerHTML=safeFmt(d.indoorTempF)+'<sup>'+u+'</sup>';
-  document.getElementById('indoorHumVal').textContent=safeNum(d.indoorHum);
-  const strikes=(d.lightningStrikes!=null&&!isNaN(d.lightningStrikes))?d.lightningStrikes:0;
-  document.getElementById('lightningVal').textContent=strikes;
-  document.getElementById('lightningDesc').textContent=
-    strikes===0?'No strikes detected':'Last: '+(d.lightningDist||'—')+' mi away';
-  const cf=d.coopTempF;
-  document.getElementById('coopTemp').innerHTML=safeFmt(cf)+'<sup style="font-size:0.9rem">'+u+'</sup>';
-  document.getElementById('coopHum').textContent=safeNum(d.coopHum);
-  document.getElementById('coopHigh').textContent=safeFmt(d.coopHighF);
-  document.getElementById('coopLow').textContent=safeFmt(d.coopLowF);
-  const sEl=document.getElementById('coopStatus');
-  if(cf==null||isNaN(cf)){sEl.className='coop-status';sEl.textContent='—';}
-  else if(cf<40){sEl.className='coop-status coop-cold';sEl.textContent='⚠ Too Cold!';}
-  else if(cf<55){sEl.className='coop-status coop-cold';sEl.textContent='❄ Chilly';}
-  else if(cf>90){sEl.className='coop-status coop-hot';sEl.textContent='🌡 Too Hot!';}
-  else if(cf>80){sEl.className='coop-status coop-hot';sEl.textContent='☀ Warm';}
-  else{sEl.className='coop-status coop-ok';sEl.textContent='✓ Comfortable';}
+    wdir + ' · Gust ' + (useFahrenheit ? wgst + ' mph' : Math.round(wgst * 1.609) + ' km/h');
+  document.getElementById('compassNeedle').style.transform = 'rotate(' + wdeg + 'deg)';
+
+  // Pressure
+  document.getElementById('pressVal').innerHTML = safeN(d.pressureInHg) + '<sup>inHg</sup>';
+  document.getElementById('pressTrend').textContent =
+    ({rising:'▲ Rising Steady', falling:'▼ Falling', steady:'— Steady'})[d.pressureTrend] || '— Steady';
+
+  // UV
+  const uvi = (d.uvIndex != null && !isNaN(d.uvIndex)) ? Number(d.uvIndex) : 0;
+  document.getElementById('uvVal').textContent = safeN(d.uvIndex);
+  const uvLabels = ['Minimal','Low','Low','Moderate','Moderate','High','High','Very High','Very High','Very High','Extreme'];
+  document.getElementById('uvDesc').textContent = (uvLabels[uvi] || 'High') + (uvi >= 3 ? ' · SPF advised' : '');
+  document.getElementById('uvBar').style.width = (uvi / 11 * 100) + '%';
+
+  // Solar
+  const sol    = (d.solarWm2    != null && !isNaN(d.solarWm2))    ? Number(d.solarWm2)    : 0;
+  const solMax = (d.solarMaxWm2 != null && d.solarMaxWm2 > 0)      ? Number(d.solarMaxWm2) : 1000;
+  document.getElementById('solarVal').innerHTML = safeN(d.solarWm2) + '<sup>W/m²</sup>';
+  document.getElementById('solarBar').style.width = Math.min(100, sol / solMax * 100) + '%';
+
+  // Rain
+  document.getElementById('rainRateVal').innerHTML = safeX(d.rainRateInHr) + '<sup>in/hr</sup>';
+  document.getElementById('rainTotal').textContent =
+    'Today: ' + safeX(d.rainTodayIn) + ' in · Monthly: ' + safeX(d.rainMonthlyIn) + ' in';
+
+  // Dew point
+  document.getElementById('dewVal').innerHTML = safeF(d.dewPointF) + '<sup>' + u + '</sup>';
+  const dpv = useFahrenheit ? (d.dewPointF || 0) : toC(d.dewPointF || 32);
+  document.getElementById('dewDesc').textContent =
+    dpv < (useFahrenheit ? 50 : 10) ? 'Dry & comfortable' :
+    dpv < (useFahrenheit ? 60 : 15.5) ? 'Slightly humid' :
+    dpv < (useFahrenheit ? 65 : 18)   ? 'Humid' : 'Muggy';
+
+  // Indoor
+  document.getElementById('indoorVal').innerHTML = safeF(d.indoorTempF) + '<sup>' + u + '</sup>';
+  document.getElementById('indoorHumVal').textContent = safeN(d.indoorHum);
+
+  // Lightning
+  const ltg = (d.lightningStrikes != null && !isNaN(d.lightningStrikes)) ? Number(d.lightningStrikes) : 0;
+  document.getElementById('lightningVal').textContent = ltg;
+  document.getElementById('lightningDesc').textContent =
+    ltg === 0 ? 'No strikes detected' : 'Last: ' + (d.lightningDist || '—') + ' mi away';
+
+  // Chicken coop
+  const cf = d.coopTempF;
+  document.getElementById('coopTemp').innerHTML = safeF(cf) + '<sup style="font-size:0.9rem">' + u + '</sup>';
+  document.getElementById('coopHum').textContent  = safeN(d.coopHum);
+  document.getElementById('coopHigh').textContent = safeF(d.coopHighF);
+  document.getElementById('coopLow').textContent  = safeF(d.coopLowF);
+  const sEl = document.getElementById('coopStatus');
+  if (cf == null || isNaN(cf))  { sEl.className = 'coop-status'; sEl.textContent = '—'; }
+  else if (cf < 40) { sEl.className = 'coop-status coop-cold'; sEl.textContent = '⚠ Too Cold!'; }
+  else if (cf < 55) { sEl.className = 'coop-status coop-cold'; sEl.textContent = '❄ Chilly'; }
+  else if (cf > 90) { sEl.className = 'coop-status coop-hot';  sEl.textContent = '🌡 Too Hot!'; }
+  else if (cf > 80) { sEl.className = 'coop-status coop-hot';  sEl.textContent = '☀ Warm'; }
+  else              { sEl.className = 'coop-status coop-ok';   sEl.textContent = '✓ Comfortable'; }
 }
 
 function updateClock() {
@@ -2283,57 +2308,70 @@ function setStatus(msg, isError) {
 }
 
 // ═══════════════════════════════════════════════════
-// PRODUCTION API WIRING — Ambient Weather WS-2902
+// LIVE API — Ambient Weather WS-2902
 // ═══════════════════════════════════════════════════
 async function fetchWeather() {
   const cfg = loadSavedApiKeys();
   if (!cfg.appKey || !cfg.apiKey) {
-    console.warn('Skywatcher: No API keys found. Enter them in Setup → API & Station.');
+    console.warn('Skywatcher: No API keys — enter them in Setup → API & Station.');
     return;
   }
   try {
-    const res = await fetch(`https://api.ambientweather.net/v1/devices?applicationKey=${cfg.appKey}&apiKey=${cfg.apiKey}`);
-    if (!res.ok) { console.error('Skywatcher: API error', res.status, res.statusText); return; }
+    const res = await fetch(
+      'https://api.ambientweather.net/v1/devices' +
+      '?applicationKey=' + cfg.appKey +
+      '&apiKey=' + cfg.apiKey
+    );
+    if (!res.ok) { console.error('Skywatcher: API HTTP error', res.status); return; }
     const json = await res.json();
-    if (!json || !json[0] || !json[0].lastData) { console.error('Skywatcher: Unexpected API response', json); return; }
+    if (!Array.isArray(json) || !json[0] || !json[0].lastData) {
+      console.error('Skywatcher: Unexpected API shape', json); return;
+    }
     const d = json[0].lastData;
+    console.log('Skywatcher raw data:', d); // helps with debugging
 
-    // ── Core readings (fix: feelsLike → feelslike, dewPoint → dewPoint both exist but be safe)
-    weatherData.tempF        = d.tempf        ?? weatherData.tempF;
-    weatherData.feelsLikeF   = d.feelsLike    ?? d.feelslike    ?? d.tempf;
-    weatherData.humidity     = d.humidity     ?? weatherData.humidity;
-    weatherData.windSpeedMph = d.windspeedmph ?? weatherData.windSpeedMph;
-    weatherData.windGustMph  = d.windgustmph  ?? weatherData.windGustMph;
-    weatherData.windDeg      = d.winddir      ?? weatherData.windDeg;
-    weatherData.pressureInHg = d.baromrelin   ?? weatherData.pressureInHg;
-    weatherData.uvIndex      = d.uv           ?? weatherData.uvIndex;
-    weatherData.solarWm2     = d.solarradiation ?? weatherData.solarWm2;
-    weatherData.rainRateInHr = d.hourlyrainin ?? 0;
-    weatherData.rainTodayIn  = d.dailyrainin  ?? weatherData.rainTodayIn;
-    weatherData.rainMonthlyIn= d.monthlyrainin ?? weatherData.rainMonthlyIn;
-    weatherData.dewPointF    = d.dewPoint      ?? d.dewpoint    ?? weatherData.dewPointF;
-    weatherData.indoorTempF  = d.tempinf       ?? weatherData.indoorTempF;
-    weatherData.indoorHum    = d.humidityin    ?? weatherData.indoorHum;
-    weatherData.lightningStrikes = d.lightning_day ?? 0;
+    // ── Map every field, fall back to current value if API returns null/undefined
+    const n = (v, fallback) => (v != null && !isNaN(v)) ? v : fallback;
 
-    // ── Extra sensor (chicken coop)
-    weatherData.coopTempF = (cfg.coopSensor && d[cfg.coopSensor] != null) ? d[cfg.coopSensor] : (d.temp1f ?? weatherData.coopTempF);
-    weatherData.coopHum   = d.humidity1 ?? weatherData.coopHum;
+    weatherData.tempF         = n(d.tempf,           weatherData.tempF);
+    weatherData.feelsLikeF    = n(d.feelsLike ?? d.feelslike, weatherData.feelsLikeF);
+    weatherData.humidity      = n(d.humidity,         weatherData.humidity);
+    weatherData.windSpeedMph  = n(d.windspeedmph,     weatherData.windSpeedMph);
+    weatherData.windGustMph   = n(d.windgustmph,      weatherData.windGustMph);
+    weatherData.windDeg       = n(d.winddir,          weatherData.windDeg);
+    weatherData.pressureInHg  = n(d.baromrelin,       weatherData.pressureInHg);
+    weatherData.uvIndex       = n(d.uv,               weatherData.uvIndex);
+    weatherData.solarWm2      = n(d.solarradiation,   weatherData.solarWm2);
+    weatherData.rainRateInHr  = n(d.hourlyrainin,     0);
+    weatherData.rainTodayIn   = n(d.dailyrainin,      weatherData.rainTodayIn);
+    weatherData.rainMonthlyIn = n(d.monthlyrainin,    weatherData.rainMonthlyIn);
+    weatherData.dewPointF     = n(d.dewPoint ?? d.dewpoint, weatherData.dewPointF);
+    weatherData.indoorTempF   = n(d.tempinf,          weatherData.indoorTempF);
+    weatherData.indoorHum     = n(d.humidityin,       weatherData.indoorHum);
+    weatherData.lightningStrikes = n(d.lightning_day, 0);
 
-    // ── Daily high/low (WS-2902 provides these)
-    weatherData.highF = d.tempfhigh ?? d.dailyhightemp ?? weatherData.highF;
-    weatherData.lowF  = d.tempflow  ?? d.dailylowtemp  ?? weatherData.lowF;
+    // ── Extra sensor (chicken coop) — sensor name configurable in Setup
+    const coopField = cfg.coopSensor || 'temp1f';
+    weatherData.coopTempF = n(d[coopField] ?? d.temp1f, weatherData.coopTempF);
+    weatherData.coopHum   = n(d.humidity1,              weatherData.coopHum);
 
-    // ── Track coop 24-hr high/low in memory
-    if (d.temp1f != null) {
-      if (d.temp1f > weatherData.coopHighF) weatherData.coopHighF = d.temp1f;
-      if (d.temp1f < weatherData.coopLowF)  weatherData.coopLowF  = d.temp1f;
+    // ── Daily high/low from station
+    weatherData.highF = n(d.tempfhigh ?? d.dailyhightemp, weatherData.highF);
+    weatherData.lowF  = n(d.tempflow  ?? d.dailylowtemp,  weatherData.lowF);
+
+    // ── Track coop 24-hr range in memory
+    const ct = weatherData.coopTempF;
+    if (ct != null && !isNaN(ct)) {
+      if (ct > (weatherData.coopHighF || 0))  weatherData.coopHighF = ct;
+      if (ct < (weatherData.coopLowF  || 999)) weatherData.coopLowF  = ct;
     }
 
-    // ── Track solar max for bar scaling
-    if (weatherData.solarWm2 > weatherData.solarMaxWm2) weatherData.solarMaxWm2 = weatherData.solarWm2;
+    // ── Auto-scale solar bar
+    if (weatherData.solarWm2 > (weatherData.solarMaxWm2 || 0)) {
+      weatherData.solarMaxWm2 = weatherData.solarWm2;
+    }
 
-    // ── Pressure trend from consecutive readings
+    // ── Pressure trend
     if (weatherData._lastPressure != null) {
       const diff = weatherData.pressureInHg - weatherData._lastPressure;
       weatherData.pressureTrend = diff > 0.01 ? 'rising' : diff < -0.01 ? 'falling' : 'steady';
@@ -2341,24 +2379,24 @@ async function fetchWeather() {
     weatherData._lastPressure = weatherData.pressureInHg;
 
     // ── Condition detection
-    // Night = before 6 AM or after 8 PM (hour >= 20), using solar radiation as ground truth
-    const hour = new Date().getHours();
-    const isNight = hour < 6 || hour >= 20 || d.solarradiation < 5;
-    const rain    = d.hourlyrainin ?? 0;
-    const hasLightning = (d.lightning_day ?? 0) > 0;
+    // Use solar radiation < 5 as ground-truth darkness (covers pre-sunrise, post-sunset)
+    const hour    = new Date().getHours();
+    const isNight = hour < 6 || hour >= 20 || (d.solarradiation != null && d.solarradiation < 5);
+    const rain    = d.hourlyrainin || 0;
+    const hasLtg  = (d.lightning_day || 0) > 0;
 
-    if      (rain > 0.5 && hasLightning)  currentCond = 'storm';
-    else if (rain > 0.3)                  currentCond = isNight ? 'night-rain' : 'heavy-rain';
-    else if (rain > 0)                    currentCond = isNight ? 'night-rain' : 'light-rain';
-    else if (isNight)                     currentCond = 'night';
-    else if (d.solarradiation < 50)       currentCond = 'overcast';
-    else if (d.solarradiation < 300)      currentCond = 'partly';
-    else                                  currentCond = 'sunny';
+    if      (rain > 0.5 && hasLtg) currentCond = 'storm';
+    else if (rain > 0.3)           currentCond = isNight ? 'night-rain' : 'heavy-rain';
+    else if (rain > 0)             currentCond = isNight ? 'night-rain' : 'light-rain';
+    else if (isNight)              currentCond = 'night';
+    else if (d.solarradiation < 50)  currentCond = 'overcast';
+    else if (d.solarradiation < 300) currentCond = 'partly';
+    else                           currentCond = 'sunny';
 
     renderScene(currentCond, currentTheme);
     updateStats();
-  } catch(err) {
-    console.error('Skywatcher: fetchWeather failed —', err);
+  } catch (err) {
+    console.error('Skywatcher: fetchWeather error —', err);
   }
 }
 const apiCfg = loadSavedApiKeys();
