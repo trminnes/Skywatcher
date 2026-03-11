@@ -1131,7 +1131,12 @@ function loadSavedPhotos() {
 function loadSavedApiKeys() {
   try {
     const saved = localStorage.getItem('skywatcher_api');
-    if (saved) return JSON.parse(saved);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      // Sanitize legacy bad value
+      if (!parsed.coopSensor || parsed.coopSensor === 'Sensor1') parsed.coopSensor = 'temp1f';
+      return parsed;
+    }
   } catch(e) {}
   return { appKey: '', apiKey: '', coopSensor: 'temp1f', refreshSec: 60, stationName: 'My Weather Station' };
 }
@@ -1275,7 +1280,7 @@ function renderApiTab() {
     </div>
     <div class="api-row">
       <div class="api-label">Chicken Coop Sensor Field</div>
-      <input class="api-input" id="api-coopSensor" type="text" value="${cfg.coopSensor}" placeholder="temp1f"/>
+      <input class="api-input" id="api-coopSensor" type="text" value="${cfg.coopSensor === 'Sensor1' ? 'temp1f' : (cfg.coopSensor || 'temp1f')}" placeholder="temp1f"/>
       <div class="api-note">The Ambient Weather API field name for your extra temperature sensor (usually <code>temp1f</code> for the first extra sensor). Humidity will use the matching <code>humidity1</code> field.</div>
     </div>
     <div class="api-row">
@@ -1289,11 +1294,11 @@ function renderApiTab() {
       <strong style="color:rgba(255,255,255,0.6)">Extra Sensor:</strong> Chicken Coop Temperature Monitor<br>
       <strong style="color:rgba(255,255,255,0.6)">Data Source:</strong> api.ambientweather.net/v1/devices
     </div>
-    <div style="display:flex;gap:8px;margin-top:20px">
+    <div style="display:flex;gap:8px;margin-top:20px;align-items:center">
       <button class="action-btn primary" onclick="saveApiKeys()">💾 Save &amp; Connect</button>
-      <button class="action-btn" onclick="fetchWeather().then(()=>setStatus('✓ Live data fetched',false))">🔄 Fetch Now</button>
+      <button class="action-btn" onclick="fetchWeather()">🔄 Fetch Now</button>
+      <span id="apiConnectStatus" style="font-size:0.65rem;color:rgba(255,255,255,0.35);letter-spacing:0.06em"></span>
     </div>
-    <div id="apiConnectStatus" style="margin-top:10px;font-size:0.68rem;color:rgba(255,255,255,0.35);letter-spacing:0.06em"></div>
   `;
 }
 
@@ -2248,20 +2253,19 @@ function saveAllSettings() {
   try {
     localStorage.setItem('skywatcher_photos', JSON.stringify(photos));
   } catch(e) { setStatus('Error saving — localStorage may be full', true); return; }
-  // Save API settings
+  // Save API settings if that tab is currently rendered
   if (document.getElementById('api-appKey')) {
     const apiCfg = {
       appKey:      document.getElementById('api-appKey').value.trim(),
       apiKey:      document.getElementById('api-apiKey').value.trim(),
       stationName: document.getElementById('api-stationName').value.trim(),
-      coopSensor:  document.getElementById('api-coopSensor').value.trim(),
+      coopSensor:  document.getElementById('api-coopSensor').value.trim() || 'temp1f',
       refreshSec:  parseInt(document.getElementById('api-refreshSec').value) || 60,
     };
     try { localStorage.setItem('skywatcher_api', JSON.stringify(apiCfg)); } catch(e) {}
-    // Restart polling with new keys + interval
     if (_fetchInterval) clearInterval(_fetchInterval);
-    fetchWeather();
     _fetchInterval = setInterval(fetchWeather, (apiCfg.refreshSec || 60) * 1000);
+    if (apiCfg.appKey && apiCfg.apiKey) fetchWeather();
   }
   // Re-render current scene with updated photos
   renderScene(currentCond, currentTheme);
@@ -2299,36 +2303,6 @@ function resetToDefaults() {
   setTimeout(() => setStatus('No unsaved changes', false), 3000);
 }
 
-let _fetchInterval = null;
-
-function saveApiKeys() {
-  const appKeyEl  = document.getElementById('api-appKey');
-  const apiKeyEl  = document.getElementById('api-apiKey');
-  const stNameEl  = document.getElementById('api-stationName');
-  const coopEl    = document.getElementById('api-coopSensor');
-  const refreshEl = document.getElementById('api-refreshSec');
-  if (!appKeyEl || !apiKeyEl) { setStatus('Error: API tab not visible', true); return; }
-  const apiCfg = {
-    appKey:      appKeyEl.value.trim(),
-    apiKey:      apiKeyEl.value.trim(),
-    stationName: stNameEl ? stNameEl.value.trim() : 'My Weather Station',
-    coopSensor:  coopEl   ? coopEl.value.trim()   : 'temp1f',
-    refreshSec:  refreshEl ? (parseInt(refreshEl.value) || 60) : 60,
-  };
-  try {
-    localStorage.setItem('skywatcher_api', JSON.stringify(apiCfg));
-  } catch(e) { setStatus('Error saving — localStorage may be full', true); return; }
-  // Restart polling with new keys + new interval
-  if (_fetchInterval) clearInterval(_fetchInterval);
-  fetchWeather();
-  _fetchInterval = setInterval(fetchWeather, (apiCfg.refreshSec || 60) * 1000);
-  // Update status in-tab
-  const statusEl = document.getElementById('apiConnectStatus');
-  if (statusEl) statusEl.textContent = '✓ Keys saved — fetching live data…';
-  setStatus('✓ API keys saved — live data fetching', false);
-  setTimeout(() => setStatus('No unsaved changes', false), 4000);
-}
-
 function setStatus(msg, isError) {
   const el = document.getElementById('setupStatus');
   el.textContent = msg;
@@ -2338,6 +2312,42 @@ function setStatus(msg, isError) {
 // ═══════════════════════════════════════════════════
 // LIVE API — Ambient Weather WS-2902
 // ═══════════════════════════════════════════════════
+
+let _fetchInterval = null;
+
+// Dedicated save+connect for the API tab
+function saveApiKeys() {
+  const appKeyEl  = document.getElementById('api-appKey');
+  const apiKeyEl  = document.getElementById('api-apiKey');
+  const stNameEl  = document.getElementById('api-stationName');
+  const coopEl    = document.getElementById('api-coopSensor');
+  const refreshEl = document.getElementById('api-refreshSec');
+  if (!appKeyEl || !apiKeyEl) {
+    setStatus('Switch to the API & Station tab first', true); return;
+  }
+  const newCfg = {
+    appKey:      appKeyEl.value.trim(),
+    apiKey:      apiKeyEl.value.trim(),
+    stationName: stNameEl  ? stNameEl.value.trim()              : 'My Weather Station',
+    coopSensor:  coopEl    ? (coopEl.value.trim() || 'temp1f')  : 'temp1f',
+    refreshSec:  refreshEl ? (parseInt(refreshEl.value) || 60)  : 60,
+  };
+  if (!newCfg.appKey || !newCfg.apiKey) {
+    setStatus('Both Application Key and API Key are required', true); return;
+  }
+  try {
+    localStorage.setItem('skywatcher_api', JSON.stringify(newCfg));
+  } catch(e) { setStatus('Error saving — localStorage may be full', true); return; }
+  // Restart polling with new keys + new interval
+  if (_fetchInterval) clearInterval(_fetchInterval);
+  _fetchInterval = setInterval(fetchWeather, (newCfg.refreshSec || 60) * 1000);
+  fetchWeather();
+  const statusEl = document.getElementById('apiConnectStatus');
+  if (statusEl) statusEl.textContent = '✓ Saved — fetching live data…';
+  setStatus('✓ API keys saved — connecting to station…', false);
+  setTimeout(() => setStatus('No unsaved changes', false), 4000);
+}
+
 async function fetchWeather() {
   const cfg = loadSavedApiKeys();
   if (!cfg.appKey || !cfg.apiKey) {
