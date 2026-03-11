@@ -1289,6 +1289,11 @@ function renderApiTab() {
       <strong style="color:rgba(255,255,255,0.6)">Extra Sensor:</strong> Chicken Coop Temperature Monitor<br>
       <strong style="color:rgba(255,255,255,0.6)">Data Source:</strong> api.ambientweather.net/v1/devices
     </div>
+    <div style="display:flex;gap:8px;margin-top:20px">
+      <button class="action-btn primary" onclick="saveApiKeys()">💾 Save &amp; Connect</button>
+      <button class="action-btn" onclick="fetchWeather().then(()=>setStatus('✓ Live data fetched',false))">🔄 Fetch Now</button>
+    </div>
+    <div id="apiConnectStatus" style="margin-top:10px;font-size:0.68rem;color:rgba(255,255,255,0.35);letter-spacing:0.06em"></div>
   `;
 }
 
@@ -2253,6 +2258,10 @@ function saveAllSettings() {
       refreshSec:  parseInt(document.getElementById('api-refreshSec').value) || 60,
     };
     try { localStorage.setItem('skywatcher_api', JSON.stringify(apiCfg)); } catch(e) {}
+    // Restart polling with new keys + interval
+    if (_fetchInterval) clearInterval(_fetchInterval);
+    fetchWeather();
+    _fetchInterval = setInterval(fetchWeather, (apiCfg.refreshSec || 60) * 1000);
   }
   // Re-render current scene with updated photos
   renderScene(currentCond, currentTheme);
@@ -2288,6 +2297,36 @@ function resetToDefaults() {
   renderSetupTab(activeSetupTab);
   setStatus('✓ Reset to defaults', false);
   setTimeout(() => setStatus('No unsaved changes', false), 3000);
+}
+
+let _fetchInterval = null;
+
+function saveApiKeys() {
+  const appKeyEl  = document.getElementById('api-appKey');
+  const apiKeyEl  = document.getElementById('api-apiKey');
+  const stNameEl  = document.getElementById('api-stationName');
+  const coopEl    = document.getElementById('api-coopSensor');
+  const refreshEl = document.getElementById('api-refreshSec');
+  if (!appKeyEl || !apiKeyEl) { setStatus('Error: API tab not visible', true); return; }
+  const apiCfg = {
+    appKey:      appKeyEl.value.trim(),
+    apiKey:      apiKeyEl.value.trim(),
+    stationName: stNameEl ? stNameEl.value.trim() : 'My Weather Station',
+    coopSensor:  coopEl   ? coopEl.value.trim()   : 'temp1f',
+    refreshSec:  refreshEl ? (parseInt(refreshEl.value) || 60) : 60,
+  };
+  try {
+    localStorage.setItem('skywatcher_api', JSON.stringify(apiCfg));
+  } catch(e) { setStatus('Error saving — localStorage may be full', true); return; }
+  // Restart polling with new keys + new interval
+  if (_fetchInterval) clearInterval(_fetchInterval);
+  fetchWeather();
+  _fetchInterval = setInterval(fetchWeather, (apiCfg.refreshSec || 60) * 1000);
+  // Update status in-tab
+  const statusEl = document.getElementById('apiConnectStatus');
+  if (statusEl) statusEl.textContent = '✓ Keys saved — fetching live data…';
+  setStatus('✓ API keys saved — live data fetching', false);
+  setTimeout(() => setStatus('No unsaved changes', false), 4000);
 }
 
 function setStatus(msg, isError) {
@@ -2395,7 +2434,7 @@ async function fetchWeather() {
 }
 const apiCfg = loadSavedApiKeys();
 fetchWeather();
-setInterval(fetchWeather, (apiCfg.refreshSec || 60) * 1000);
+_fetchInterval = setInterval(fetchWeather, (apiCfg.refreshSec || 60) * 1000);
 
 // Hide scroll hint initially; it shows once forecast data loads
 (function() {
