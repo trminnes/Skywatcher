@@ -2325,7 +2325,7 @@ function saveApiKeys() {
     coopSensor:  coopEl    ? (coopEl.value.trim() || 'temp1f') : 'temp1f',
     refreshSec:  refreshEl ? (parseInt(refreshEl.value) || 60) : 60,
   };
-  if (!newCfg.appKey || !newCfg.apiKey) { setStatus('Both Application Key and API Key are required', true); return; }
+  if (!newCfg.appKey || !newCfg.apiKey) { setStatus('Both keys required', true); return; }
   try { localStorage.setItem('skywatcher_api', JSON.stringify(newCfg)); } catch(e) { setStatus('Error saving', true); return; }
   if (_fetchInterval) clearInterval(_fetchInterval);
   _fetchInterval = setInterval(fetchWeather, (newCfg.refreshSec || 60) * 1000);
@@ -2339,7 +2339,7 @@ function saveApiKeys() {
 async function fetchWeather() {
   const cfg = loadSavedApiKeys();
   if (!cfg.appKey || !cfg.apiKey) {
-    console.warn('Skywatcher: No API keys — enter them in Setup → API & Station.');
+    console.warn('Skywatcher: No API keys configured.');
     return;
   }
   try {
@@ -2352,92 +2352,92 @@ async function fetchWeather() {
     if (!res.ok) { console.error('Skywatcher: API HTTP error', res.status, res.statusText); return; }
 
     const json = await res.json();
+    const devices = Array.isArray(json) ? json : (json.devices || [json]);
 
-    // Handle both array response and single-device object
-    let deviceData = null;
-    if (Array.isArray(json) && json.length > 0) {
-      deviceData = json[0];
-    } else if (json && json.lastData) {
-      deviceData = json;
-    } else if (json && Array.isArray(json.devices) && json.devices.length > 0) {
-      deviceData = json.devices[0];
-    }
+    // Log all devices so we can see the full structure
+    console.log('Skywatcher: ' + devices.length + ' device(s) found');
+    devices.forEach((dev, i) => {
+      const ld = dev.lastData || {};
+      console.log('Device[' + i + '] keys:', Object.keys(ld).sort().join(', '));
+      console.log('Device[' + i + '] data:', ld);
+    });
 
-    if (!deviceData || !deviceData.lastData) {
-      console.error('Skywatcher: Could not find lastData in response:', JSON.stringify(json).slice(0, 300));
-      return;
-    }
+    // Find device with outdoor temp — prefer device that has tempf
+    // Fall back to merging all devices' lastData
+    const merged = {};
+    devices.forEach(dev => { if (dev.lastData) Object.assign(merged, dev.lastData); });
 
-    const d = deviceData.lastData;
-    // Log ALL fields so we can see exact key names from this station
-    console.log('Skywatcher ALL fields:', Object.keys(d).sort().join(', '));
-    console.log('Skywatcher raw data:', d);
-
+    const d = merged;
     const n = (v, fallback) => (v != null && v !== '' && !isNaN(Number(v))) ? Number(v) : fallback;
 
-    // Outdoor temp — try every known variant
-    weatherData.tempF = n(d.tempf ?? d.temp ?? d.outtemp ?? d.temperature, weatherData.tempF);
+    // Outdoor temp: try every known field name
+    weatherData.tempF = n(
+      d.tempf ?? d.temp ?? d.outTemp ?? d.outdoorTemp ?? d.temperature,
+      weatherData.tempF
+    );
 
-    // Feels like — Ambient returns 'feelsLike' (camelCase)
-    weatherData.feelsLikeF = n(d.feelsLike ?? d.feelslike ?? d.feels_like, weatherData.feelsLikeF);
+    // Feels like (outdoor): the 'in' suffix variants are indoor
+    weatherData.feelsLikeF = n(
+      d.feelsLike ?? d.feelslike ?? d.feels_like,
+      weatherData.feelsLikeF
+    );
 
-    // Outdoor humidity
-    weatherData.humidity = n(d.humidity ?? d.outhumidity, weatherData.humidity);
+    // Outdoor humidity (no 'in' suffix)
+    weatherData.humidity = n(
+      d.humidity ?? d.outHumidity ?? d.outdoorHumidity,
+      weatherData.humidity
+    );
 
-    // Wind
-    weatherData.windSpeedMph = n(d.windspeedmph ?? d.windspeed, weatherData.windSpeedMph);
-    weatherData.windGustMph  = n(d.windgustmph  ?? d.windgust,  weatherData.windGustMph);
-    weatherData.windDeg      = n(d.winddir, weatherData.windDeg);
+    // Wind — your station uses winddir_avg10m
+    weatherData.windSpeedMph = n(d.windspeedmph ?? d.windSpeed ?? d.wind_speed ?? d.windspeed, weatherData.windSpeedMph);
+    weatherData.windGustMph  = n(d.windgustmph  ?? d.windGust  ?? d.wind_gust  ?? d.windgust,  weatherData.windGustMph);
+    weatherData.windDeg      = n(d.winddir      ?? d.winddir_avg10m ?? d.windDir, weatherData.windDeg);
 
-    // Pressure — 'baromrelin' is the relative (corrected) reading
+    // Pressure
     weatherData.pressureInHg = n(d.baromrelin ?? d.baromabsin ?? d.pressure, weatherData.pressureInHg);
 
     // UV / Solar
-    weatherData.uvIndex  = n(d.uv,              weatherData.uvIndex);
-    weatherData.solarWm2 = n(d.solarradiation,  weatherData.solarWm2);
+    weatherData.uvIndex  = n(d.uv,             weatherData.uvIndex);
+    weatherData.solarWm2 = n(d.solarradiation, weatherData.solarWm2);
 
     // Rain
     weatherData.rainRateInHr  = n(d.hourlyrainin,  0);
     weatherData.rainTodayIn   = n(d.dailyrainin,   weatherData.rainTodayIn);
     weatherData.rainMonthlyIn = n(d.monthlyrainin, weatherData.rainMonthlyIn);
 
-    // Dew point — Ambient returns 'dewPoint' (camelCase)
+    // Dew point (outdoor, no 'in' suffix)
     weatherData.dewPointF = n(d.dewPoint ?? d.dewpoint ?? d.dew_point, weatherData.dewPointF);
 
-    // Indoor
-    weatherData.indoorTempF = n(d.tempinf,     weatherData.indoorTempF);
-    weatherData.indoorHum   = n(d.humidityin,  weatherData.indoorHum);
+    // Indoor (explicit 'in' suffix fields)
+    weatherData.indoorTempF = n(d.tempinf,    weatherData.indoorTempF);
+    weatherData.indoorHum   = n(d.humidityin, weatherData.indoorHum);
 
     // Lightning
     weatherData.lightningStrikes = n(d.lightning_day ?? d.lightningDay, 0);
+
+    // High/Low
+    weatherData.highF = n(d.tempfhigh  ?? d.dailyhightemp, weatherData.highF);
+    weatherData.lowF  = n(d.tempflow   ?? d.dailylowtemp,  weatherData.lowF);
 
     // Chicken coop extra sensor
     const coopField = (cfg.coopSensor && cfg.coopSensor !== 'Sensor1') ? cfg.coopSensor : 'temp1f';
     weatherData.coopTempF = n(d[coopField] ?? d.temp1f, weatherData.coopTempF);
     weatherData.coopHum   = n(d.humidity1,              weatherData.coopHum);
 
-    // Daily high/low — Ambient returns these as 'tempfhigh' / 'tempflow' in lastData
-    weatherData.highF = n(d.tempfhigh  ?? d.dailyhightemp ?? d.maxdailygust, weatherData.highF);
-    weatherData.lowF  = n(d.tempflow   ?? d.dailylowtemp,                    weatherData.lowF);
-
-    // Track coop 24-hr range
     const ct = weatherData.coopTempF;
     if (ct != null && !isNaN(ct)) {
       if (weatherData.coopHighF == null || ct > weatherData.coopHighF) weatherData.coopHighF = ct;
       if (weatherData.coopLowF  == null || ct < weatherData.coopLowF)  weatherData.coopLowF  = ct;
     }
 
-    // Auto-scale solar bar
     if (weatherData.solarWm2 > (weatherData.solarMaxWm2 || 0)) weatherData.solarMaxWm2 = weatherData.solarWm2;
 
-    // Pressure trend
     if (weatherData._lastPressure != null) {
       const diff = weatherData.pressureInHg - weatherData._lastPressure;
       weatherData.pressureTrend = diff > 0.01 ? 'rising' : diff < -0.01 ? 'falling' : 'steady';
     }
     weatherData._lastPressure = weatherData.pressureInHg;
 
-    // Condition detection
     const hour    = new Date().getHours();
     const solar   = Number(d.solarradiation) || 0;
     const isNight = hour < 6 || hour >= 20 || (d.solarradiation != null && solar < 5);
@@ -2455,11 +2455,12 @@ async function fetchWeather() {
     renderScene(currentCond, currentTheme);
     updateStats();
 
-    console.log('Skywatcher updated → temp:', weatherData.tempF, '°F  humidity:', weatherData.humidity, '%  pressure:', weatherData.pressureInHg, 'inHg');
+    console.log('Skywatcher ✓ tempF=' + weatherData.tempF + ' humidity=' + weatherData.humidity + ' pressure=' + weatherData.pressureInHg);
   } catch (err) {
     console.error('Skywatcher: fetchWeather error —', err);
   }
 }
+
 const apiCfg = loadSavedApiKeys();
 fetchWeather();
 _fetchInterval = setInterval(fetchWeather, (apiCfg.refreshSec || 60) * 1000);
