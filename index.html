@@ -2616,7 +2616,7 @@ function buildAiSummaryHTML() {
       <div id="aiSummaryBody">${bodyHTML}</div>
       <div class="ai-summary-footer">
         <button class="ai-refresh-btn" id="aiRefreshBtn" onclick="runAiSummary()">⟳ Refresh</button>
-        <span class="ai-credit">Powered by Google Gemini · Free tier</span>
+        <span class="ai-credit">Powered by Google Gemini 1.5 Flash · Free tier</span>
       </div>
     </div>`;
 }
@@ -2653,7 +2653,7 @@ async function runAiSummary() {
   try {
     const prompt = buildAiPrompt();
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${cfg.geminiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${cfg.geminiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
