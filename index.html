@@ -705,6 +705,14 @@
     </div>
 
     <div class="stat-panel">
+      <span class="stat-icon">🌡️</span>
+      <div class="stat-label">Outdoor Temp</div>
+      <div class="stat-value" id="outdoorTempVal">74<sup>°F</sup></div>
+      <div class="stat-sub" id="outdoorTempSub">High —° · Low —°</div>
+      <div class="stat-bar"><div class="stat-bar-fill" id="outdoorTempBar" style="width:50%"></div></div>
+    </div>
+
+    <div class="stat-panel">
       <span class="stat-icon">🏠</span>
       <div class="stat-label">Indoor Temp</div>
       <div class="stat-value" id="indoorVal">72<sup>°F</sup></div>
@@ -1055,6 +1063,17 @@ function updateStats() {
     dpv < (useFahrenheit ? 60 : 15.5) ? 'Slightly humid' :
     dpv < (useFahrenheit ? 65 : 18)   ? 'Humid' : 'Muggy';
 
+  // Outdoor temp tile
+  document.getElementById('outdoorTempVal').innerHTML = safeF(d.tempF) + '<sup>' + u + '</sup>';
+  const hiStr2 = (d.highF != null && !isNaN(d.highF)) ? 'High ' + fmt(d.highF) + '°' : '';
+  const loStr2 = (d.lowF  != null && !isNaN(d.lowF))  ? 'Low '  + fmt(d.lowF)  + '°' : '';
+  document.getElementById('outdoorTempSub').textContent =
+    [hiStr2, loStr2].filter(Boolean).join(' · ') || 'Live from WS-2902';
+  // Bar: map typical range 20°F–105°F to 0–100%
+  const tpct = (d.tempF != null && !isNaN(d.tempF))
+    ? Math.min(100, Math.max(0, Math.round(((d.tempF - 20) / 85) * 100))) : 50;
+  document.getElementById('outdoorTempBar').style.width = tpct + '%';
+
   document.getElementById('indoorVal').innerHTML = safeF(d.indoorTempF) + '<sup>' + u + '</sup>';
   document.getElementById('indoorHumVal').textContent = safeN(d.indoorHum);
 
@@ -1064,12 +1083,15 @@ function updateStats() {
     ltg === 0 ? 'No strikes detected' : 'Last: ' + (d.lightningDist || '—') + ' mi away';
 
   const cf = d.coopTempF;
-  document.getElementById('coopTemp').innerHTML = safeF(cf) + '<sup style="font-size:0.9rem">' + u + '</sup>';
-  document.getElementById('coopHum').textContent  = safeN(d.coopHum);
-  document.getElementById('coopHigh').textContent = safeF(d.coopHighF);
-  document.getElementById('coopLow').textContent  = safeF(d.coopLowF);
+  const coopOnline = (cf != null && !isNaN(cf));
+  document.getElementById('coopTemp').innerHTML = coopOnline
+    ? safeF(cf) + '<sup style="font-size:0.9rem">' + u + '</sup>'
+    : '<span style="font-size:1.1rem;color:var(--text-secondary)">— Offline</span>';
+  document.getElementById('coopHum').textContent  = coopOnline ? safeN(d.coopHum) : '—';
+  document.getElementById('coopHigh').textContent = coopOnline ? safeF(d.coopHighF) : '—';
+  document.getElementById('coopLow').textContent  = coopOnline ? safeF(d.coopLowF)  : '—';
   const sEl = document.getElementById('coopStatus');
-  if (cf == null || isNaN(cf))  { sEl.className = 'coop-status'; sEl.textContent = '—'; }
+  if (!coopOnline) { sEl.className = 'coop-status'; sEl.textContent = '⚡ Sensor offline'; }
   else if (cf < 40) { sEl.className = 'coop-status coop-cold'; sEl.textContent = '⚠ Too Cold!'; }
   else if (cf < 55) { sEl.className = 'coop-status coop-cold'; sEl.textContent = '❄ Chilly'; }
   else if (cf > 90) { sEl.className = 'coop-status coop-hot';  sEl.textContent = '🌡 Too Hot!'; }
