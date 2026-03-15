@@ -1017,7 +1017,7 @@ function updateStats() {
   const loStr = (d.lowF  != null && !isNaN(d.lowF))  ? 'Low '  + fmt(d.lowF)  + '°' : '';
   const hlPart = [hiStr, loStr].filter(Boolean).join(' · ');
   document.getElementById('feelsDisplay').textContent =
-    'Feels like ' + safeF(d.feelsLikeF) + u + (hlPart ? ' · ' + hlPart : '');
+    hlPart || ('High —° · Low —°');
 
   const hum = (d.humidity != null && !isNaN(d.humidity)) ? Number(d.humidity) : 0;
   document.getElementById('humVal').innerHTML = safeN(d.humidity) + '<sup>%</sup>';
