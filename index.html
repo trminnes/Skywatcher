@@ -582,6 +582,70 @@
   @media (max-width: 480px) {
     #main-forecast-strip { grid-template-columns: repeat(2, 1fr); }
   }
+
+  /* ── AI FORECAST SUMMARY ─────────────────────────────────────── */
+  #ai-summary-wrap {
+    background: linear-gradient(135deg, rgba(120,80,220,0.18) 0%, rgba(40,100,200,0.18) 100%);
+    backdrop-filter: var(--card-blur); -webkit-backdrop-filter: var(--card-blur);
+    border: 1px solid rgba(160,120,255,0.28); border-radius: 18px;
+    padding: 20px 22px; margin-bottom: 16px;
+    position: relative; overflow: hidden;
+  }
+  #ai-summary-wrap::before {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(135deg, rgba(255,255,255,0.06) 0%, transparent 60%);
+    pointer-events: none; border-radius: inherit;
+  }
+  .ai-summary-header {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 14px;
+  }
+  .ai-summary-badge {
+    font-size: 0.58rem; letter-spacing: 0.16em; text-transform: uppercase;
+    background: rgba(160,120,255,0.25); border: 1px solid rgba(160,120,255,0.4);
+    color: rgba(200,170,255,0.95); border-radius: 20px; padding: 3px 10px;
+  }
+  .ai-summary-title {
+    font-family: 'Playfair Display', serif; font-size: 1rem; font-weight: 700; color: white;
+    flex: 1;
+  }
+  .ai-summary-time {
+    font-size: 0.6rem; color: var(--text-secondary); letter-spacing: 0.1em;
+  }
+  .ai-summary-text {
+    font-size: 0.85rem; line-height: 1.75; color: rgba(255,255,255,0.88);
+    font-weight: 300;
+  }
+  .ai-summary-text strong { color: white; font-weight: 600; }
+  .ai-summary-footer {
+    margin-top: 12px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  }
+  .ai-refresh-btn {
+    background: rgba(160,120,255,0.18); border: 1px solid rgba(160,120,255,0.35);
+    border-radius: 8px; color: rgba(200,170,255,0.9); font-family: 'DM Sans', sans-serif;
+    font-size: 0.65rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+    cursor: pointer; padding: 6px 14px; transition: background 0.2s;
+  }
+  .ai-refresh-btn:hover { background: rgba(160,120,255,0.32); }
+  .ai-refresh-btn:disabled { opacity: 0.4; cursor: default; }
+  .ai-credit { font-size: 0.58rem; color: var(--text-secondary); letter-spacing: 0.08em; }
+  .ai-loading {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 0.8rem; color: rgba(200,170,255,0.7);
+  }
+  .ai-spinner {
+    width: 16px; height: 16px; border: 2px solid rgba(160,120,255,0.25);
+    border-top-color: rgba(200,170,255,0.85); border-radius: 50%;
+    animation: spin 0.8s linear infinite; flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .ai-error { font-size: 0.78rem; color: #ef9a9a; line-height: 1.6; }
+  .ai-setup-prompt {
+    font-size: 0.8rem; color: var(--text-secondary); line-height: 1.7; text-align: center;
+    padding: 8px 0;
+  }
+  .ai-setup-prompt a {
+    color: rgba(200,170,255,0.9); text-decoration: underline; cursor: pointer;
+  }
 </style>
 </head>
 <body>
@@ -794,6 +858,7 @@
     <button class="setup-tab"        data-tab="forest"   onclick="switchSetupTab('forest')">🌲 Forest</button>
     <button class="setup-tab"        data-tab="api"      onclick="switchSetupTab('api')">🔌 API &amp; Station</button>
     <button class="setup-tab"        data-tab="forecast" onclick="switchSetupTab('forecast')">🌤 Forecast</button>
+    <button class="setup-tab"        data-tab="ai"       onclick="switchSetupTab('ai')">🤖 AI Forecast</button>
   </div>
 
   <!-- CONTENT -->
@@ -2060,7 +2125,11 @@ function renderMainForecast() {
   body.innerHTML = `
     <div id="main-forecast-strip">${strip}</div>
     ${hourlyHTML}
-    ${compareHTML}`;
+    ${compareHTML}
+    ${buildAiSummaryHTML()}`;
+
+  // Auto-run AI summary if key is set and data is fresh
+  autoRunAiSummary();
 }
 
 // Patch renderSetupTab to handle the forecast tab
@@ -2499,6 +2568,256 @@ _fetchInterval = setInterval(fetchWeather, (apiCfg.refreshSec || 60) * 1000);
 
 // Initial main-page forecast render (shows placeholder or cached data)
 renderMainForecast();
+
+// ═══════════════════════════════════════════════════════════════
+// AI FORECAST SUMMARY — Google Gemini Free Tier
+// ═══════════════════════════════════════════════════════════════
+
+let aiSummaryCache = null;       // { text, fetchedAt, stationSnapshot }
+let aiSummaryRunning = false;
+
+function loadAiCfg() {
+  try {
+    const s = localStorage.getItem('skywatcher_ai');
+    if (s) return JSON.parse(s);
+  } catch(e) {}
+  return { geminiKey: '', autoRefresh: true };
+}
+function saveAiCfg(cfg) {
+  try { localStorage.setItem('skywatcher_ai', JSON.stringify(cfg)); } catch(e) {}
+}
+
+function buildAiSummaryHTML() {
+  const cfg = loadAiCfg();
+  if (!cfg.geminiKey) {
+    return `
+      <div id="ai-summary-wrap">
+        <div class="ai-summary-header">
+          <span class="ai-summary-badge">✨ AI</span>
+          <div class="ai-summary-title">AI Forecast Summary</div>
+        </div>
+        <div class="ai-setup-prompt">
+          Connect Google Gemini for a plain-English blended forecast tailored to your address.<br>
+          <a onclick="toggleSetup(); switchSetupTab('ai')">Configure Gemini API key →</a>
+        </div>
+      </div>`;
+  }
+  const cached = aiSummaryCache;
+  const bodyHTML = cached
+    ? `<div class="ai-summary-text">${cached.text}</div>`
+    : `<div class="ai-loading"><div class="ai-spinner"></div> Generating AI forecast…</div>`;
+  return `
+    <div id="ai-summary-wrap">
+      <div class="ai-summary-header">
+        <span class="ai-summary-badge">✨ Gemini AI</span>
+        <div class="ai-summary-title">AI Forecast Summary</div>
+        <div class="ai-summary-time" id="aiSummaryTime">${cached ? 'Updated ' + cached.fetchedAt : ''}</div>
+      </div>
+      <div id="aiSummaryBody">${bodyHTML}</div>
+      <div class="ai-summary-footer">
+        <button class="ai-refresh-btn" id="aiRefreshBtn" onclick="runAiSummary()">⟳ Refresh</button>
+        <span class="ai-credit">Powered by Google Gemini · Free tier</span>
+      </div>
+    </div>`;
+}
+
+function autoRunAiSummary() {
+  const cfg = loadAiCfg();
+  if (!cfg.geminiKey) return;
+  // Only auto-run if no cache or cache is older than 15 min
+  if (aiSummaryCache) {
+    const age = Date.now() - (aiSummaryCache._ts || 0);
+    if (age < 15 * 60 * 1000) {
+      // Cache is fresh — just re-render it
+      const body = document.getElementById('aiSummaryBody');
+      if (body) body.innerHTML = `<div class="ai-summary-text">${aiSummaryCache.text}</div>`;
+      const timeEl = document.getElementById('aiSummaryTime');
+      if (timeEl) timeEl.textContent = 'Updated ' + aiSummaryCache.fetchedAt;
+      return;
+    }
+  }
+  runAiSummary();
+}
+
+async function runAiSummary() {
+  if (aiSummaryRunning) return;
+  const cfg = loadAiCfg();
+  if (!cfg.geminiKey) { toggleSetup(); switchSetupTab('ai'); return; }
+
+  aiSummaryRunning = true;
+  const bodyEl = document.getElementById('aiSummaryBody');
+  const btnEl  = document.getElementById('aiRefreshBtn');
+  if (bodyEl) bodyEl.innerHTML = `<div class="ai-loading"><div class="ai-spinner"></div> Asking Gemini…</div>`;
+  if (btnEl)  btnEl.disabled = true;
+
+  try {
+    const prompt = buildAiPrompt();
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${cfg.geminiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.4, maxOutputTokens: 400 }
+        })
+      }
+    );
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err?.error?.message || 'HTTP ' + res.status);
+    }
+    const data = await res.json();
+    const raw  = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    if (!raw) throw new Error('Empty response from Gemini');
+
+    // Convert **bold** markdown to <strong> and newlines to <br>
+    const formatted = raw
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\n{2,}/g, '</p><p>')
+      .replace(/\n/g, '<br>');
+    const html = '<p>' + formatted + '</p>';
+
+    const fetchedAt = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    aiSummaryCache = { text: html, fetchedAt, _ts: Date.now() };
+
+    if (bodyEl) bodyEl.innerHTML = `<div class="ai-summary-text">${html}</div>`;
+    const timeEl = document.getElementById('aiSummaryTime');
+    if (timeEl) timeEl.textContent = 'Updated ' + fetchedAt;
+
+  } catch(err) {
+    console.error('AI summary error:', err);
+    if (bodyEl) bodyEl.innerHTML =
+      `<div class="ai-error">⚠ Gemini error: ${err.message}<br>
+       <small style="opacity:0.6">Check your API key in ⚙️ Setup → 🤖 AI Forecast</small></div>`;
+  } finally {
+    aiSummaryRunning = false;
+    if (btnEl) btnEl.disabled = false;
+  }
+}
+
+function buildAiPrompt() {
+  const d   = weatherData;
+  const fcg = loadForecastCfg();
+  const loc = fcg.lat ? `${fcg.lat}, ${fcg.lon} (Plant City, FL)` : 'Plant City, FL 33563';
+  const u   = useFahrenheit;
+
+  const fmt1 = v => (v != null && !isNaN(v)) ? (u ? Math.round(v) + '°F' : Math.round((v-32)*5/9) + '°C') : 'N/A';
+  const fmt2 = (v, unit) => (v != null && !isNaN(v)) ? `${v} ${unit}` : 'N/A';
+
+  // Station snapshot
+  const station = [
+    `Temperature: ${fmt1(d.tempF)}`,
+    `Feels Like: ${fmt1(d.feelsLikeF)}`,
+    `Humidity: ${fmt2(d.humidity, '%')}`,
+    `Wind: ${fmt2(d.windSpeedMph, 'mph')} (gust ${fmt2(d.windGustMph, 'mph')})`,
+    `Pressure: ${fmt2(d.pressureInHg, 'inHg')} (${d.pressureTrend || 'steady'})`,
+    `Rain today: ${fmt2(d.rainTodayIn, 'in')}`,
+    `UV Index: ${d.uvIndex ?? 'N/A'}`,
+    `Dew Point: ${fmt1(d.dewPointF)}`,
+    `Solar: ${fmt2(d.solarWm2, 'W/m²')}`,
+  ].join('\n');
+
+  // Forecast provider snapshots
+  const providers = ['owm','gov','wapi'];
+  const provNames = { owm:'OpenWeatherMap', gov:'Weather.gov (NWS)', wapi:'WeatherAPI.com' };
+  let fcLines = '';
+  providers.forEach(p => {
+    const fc = allForecasts[p];
+    if (!fc) return;
+    const c = fc.current || {};
+    fcLines += `\n${provNames[p]}:\n`;
+    fcLines += `  Current temp: ${fmt1(c.tempF)}, humidity: ${fmt2(c.humidity,'%')}, wind: ${fmt2(c.windSpeedMph,'mph')}\n`;
+    if (fc.fiveDays && fc.fiveDays.length) {
+      fcLines += '  5-day: ' + fc.fiveDays.map(d2 =>
+        `${d2.dayName} H:${u?d2.hi:Math.round((d2.hi-32)*5/9)}° L:${u?d2.lo:Math.round((d2.lo-32)*5/9)}° ${d2.desc}${d2.pop>0?' ('+d2.pop+'% rain)':''}`
+      ).join(' | ') + '\n';
+    }
+  });
+
+  if (!fcLines) fcLines = '\n(No forecast providers connected yet)\n';
+
+  return `You are a friendly, practical local weather advisor for a residential weather station in Plant City, FL (address approximate: ${loc}).
+
+The homeowner has a personal Ambient Weather WS-2902 station in their backyard plus data from up to 3 forecast providers. Your job is to synthesize all this data into a clear, useful, plain-English forecast summary of about 3-4 short paragraphs.
+
+LIVE STATION DATA (right now):
+${station}
+
+FORECAST PROVIDER DATA:
+${fcLines}
+
+Instructions:
+- Start with a one-sentence summary of current conditions at the address.
+- Note where forecast providers agree or disagree (e.g. rain timing, high temps).
+- Give a practical 24-48 hour outlook — mention anything actionable (watering, outdoor plans, severe weather risk).
+- Keep it conversational and concise. No bullet lists. Use **bold** for key phrases like temperatures or weather events.
+- End with one sentence about the next 5 days trend.
+- Do NOT mention API names awkwardly — just say "forecasters" or "models".`;
+}
+
+// ── AI Setup Tab ─────────────────────────────────────────────────
+function renderAiTab() {
+  const cfg = loadAiCfg();
+  return `
+    <div class="tip-box" style="border-color:rgba(160,120,255,0.3);background:rgba(160,120,255,0.06)">
+      <strong style="color:rgba(200,170,255,0.9)">Google Gemini — Free AI Forecast</strong><br>
+      Gemini synthesizes your live station data + all connected forecast providers into a plain-English 
+      summary tailored to your address.<br><br>
+      <strong>How to get a free key:</strong><br>
+      1. Go to <strong>aistudio.google.com</strong><br>
+      2. Sign in with your Google account<br>
+      3. Click <strong>Get API key → Create API key</strong><br>
+      4. Copy and paste it below — the free tier includes 1,500 requests/day.
+    </div>
+    <div class="setup-section-label">Gemini API Key</div>
+    <div class="api-row">
+      <div class="api-label">API Key</div>
+      <input class="api-input" id="ai-geminiKey" type="password" value="${cfg.geminiKey}" placeholder="Paste your Gemini API key here…"/>
+    </div>
+    <div class="setup-section-label">Options</div>
+    <div class="api-row" style="display:flex;align-items:center;gap:12px">
+      <input type="checkbox" id="ai-autoRefresh" ${cfg.autoRefresh ? 'checked' : ''}
+        style="width:16px;height:16px;cursor:pointer;accent-color:rgba(160,120,255,0.9)"/>
+      <label for="ai-autoRefresh" style="font-size:0.72rem;color:rgba(255,255,255,0.6);cursor:pointer">
+        Auto-generate summary when forecast data loads (once per 15 min)
+      </label>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:20px;align-items:center">
+      <button class="action-btn primary" style="background:rgba(160,120,255,0.18);border-color:rgba(160,120,255,0.4);color:rgba(200,170,255,0.9)"
+        onclick="saveAiSettings()">💾 Save &amp; Test</button>
+      <span id="aiSetupStatus" style="font-size:0.65rem;color:rgba(255,255,255,0.35);letter-spacing:0.06em"></span>
+    </div>
+  `;
+}
+
+function saveAiSettings() {
+  const keyEl  = document.getElementById('ai-geminiKey');
+  const autoEl = document.getElementById('ai-autoRefresh');
+  if (!keyEl) return;
+  const cfg = { geminiKey: keyEl.value.trim(), autoRefresh: autoEl ? autoEl.checked : true };
+  saveAiCfg(cfg);
+  const st = document.getElementById('aiSetupStatus');
+  if (st) st.textContent = '✓ Saved — generating test summary…';
+  // Invalidate cache and trigger a fresh summary
+  aiSummaryCache = null;
+  closeSetup();
+  renderMainForecast();
+}
+
+// Hook the AI tab into the existing tab switcher
+(function() {
+  const _origAi = renderSetupTab;
+  renderSetupTab = function(tab) {
+    if (tab === 'ai') {
+      activeSetupTab = tab;
+      document.querySelectorAll('.setup-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+      document.getElementById('setupContent').innerHTML = renderAiTab();
+      return;
+    }
+    _origAi(tab);
+  };
+})();
 </script>
 </body>
 </html>
