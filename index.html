@@ -6,7 +6,6 @@
 <title>Skywatcher 500 — Family Weather Station</title>
 <meta name="description" content="Live weather dashboard for the Ambient Weather WS-2902 with forecast comparison.">
 <meta name="theme-color" content="#0a1628">
-<!-- Cache control: force Safari/iOS to always fetch fresh HTML -->
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -650,17 +649,38 @@
   .ai-setup-prompt a {
     color: rgba(200,170,255,0.9); text-decoration: underline; cursor: pointer;
   }
+  /* ── UPDATE BANNER ── */
+  #update-banner {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 9999;
+    background: rgba(240,192,64,0.95); backdrop-filter: blur(10px);
+    color: #1a1200; font-family: 'DM Sans', sans-serif;
+    font-size: 0.82rem; font-weight: 500; letter-spacing: 0.03em;
+    padding: 12px 20px; display: flex; align-items: center; gap: 14px;
+    transform: translateY(-100%); transition: transform 0.4s cubic-bezier(0.4,0,0.2,1);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+  }
+  #update-banner.show { transform: translateY(0); }
+  #update-banner .ub-msg { flex: 1; }
+  #update-banner .ub-reload {
+    background: rgba(0,0,0,0.15); border: 1px solid rgba(0,0,0,0.2);
+    border-radius: 8px; color: #1a1200; font-family: 'DM Sans', sans-serif;
+    font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+    text-transform: uppercase; cursor: pointer; padding: 6px 14px;
+    transition: background 0.2s;
+  }
+  #update-banner .ub-dismiss {
+    background: none; border: none; cursor: pointer;
+    font-size: 1.1rem; color: rgba(0,0,0,0.45); padding: 4px 6px;
+  }
 </style>
 </head>
 <body>
 
-<!-- Update notification banner -->
 <div id="update-banner">
   <span class="ub-msg">🔄 Skywatcher updated! Reload for the latest version.</span>
   <button class="ub-reload" onclick="window.location.reload(true)">Reload Now</button>
   <button class="ub-dismiss" onclick="document.getElementById('update-banner').classList.remove('show')" title="Dismiss">✕</button>
 </div>
-
 <div id="bg-photo"></div>
 <div id="bg-scrim"></div>
 <div id="particles"></div>
@@ -818,7 +838,7 @@
   </div>
 
   <footer>
-    <span class="live-dot"></span> Live · Ambient Weather WS-2902 · <span id="footerTheme">Golf Theme</span> · <span style="opacity:0.4">v<script>document.write(APP_VERSION)</script></span>
+    <span class="live-dot"></span> Live · Ambient Weather WS-2902 · <span id="footerTheme">Golf Theme</span> · <span id="footerVersion" style="opacity:0.4"></span>
   </footer>
 
   <!-- ── MAIN PAGE FORECAST SECTION ── -->
@@ -887,48 +907,17 @@
 </div>
 
 <script>
-// ── APP VERSION ────────────────────────────────────────────────
-// Bump this string every time you deploy a new version.
-// Format: YYYY-MM-DD.N  (N = build number for that day)
-const APP_VERSION = '2026-03-28.2';
-
+// ── APP VERSION — bump this string every time you deploy ───────
+// Format: YYYY-MM-DD.N
+const APP_VERSION = '2026-03-28.1';
 (function() {
-  const STORAGE_KEY = 'skywatcher_version';
-  const stored = localStorage.getItem(STORAGE_KEY);
-  if (stored && stored !== APP_VERSION) {
-    // New version detected — show update banner after page loads
-    window._showUpdateBanner = true;
-  }
-  localStorage.setItem(STORAGE_KEY, APP_VERSION);
+  const stored = localStorage.getItem('skywatcher_version');
+  if (stored && stored !== APP_VERSION) { window._showUpdateBanner = true; }
+  localStorage.setItem('skywatcher_version', APP_VERSION);
 })();
-</script>
-<style>
-  #update-banner {
-    position: fixed; top: 0; left: 0; right: 0; z-index: 9999;
-    background: rgba(240,192,64,0.95); backdrop-filter: blur(10px);
-    color: #1a1200; font-family: 'DM Sans', sans-serif;
-    font-size: 0.82rem; font-weight: 500; letter-spacing: 0.03em;
-    padding: 12px 20px; display: flex; align-items: center; gap: 14px;
-    transform: translateY(-100%); transition: transform 0.4s cubic-bezier(0.4,0,0.2,1);
-    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-  }
-  #update-banner.show { transform: translateY(0); }
-  #update-banner .ub-msg { flex: 1; }
-  #update-banner .ub-reload {
-    background: rgba(0,0,0,0.15); border: 1px solid rgba(0,0,0,0.2);
-    border-radius: 8px; color: #1a1200; font-family: 'DM Sans', sans-serif;
-    font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
-    text-transform: uppercase; cursor: pointer; padding: 6px 14px;
-    transition: background 0.2s;
-  }
-  #update-banner .ub-reload:hover { background: rgba(0,0,0,0.25); }
-  #update-banner .ub-dismiss {
-    background: none; border: none; cursor: pointer;
-    font-size: 1.1rem; color: rgba(0,0,0,0.45); padding: 4px 6px;
-    transition: color 0.2s;
-  }
-  #update-banner .ub-dismiss:hover { color: rgba(0,0,0,0.75); }
-</style>  — Unsplash photos chosen per condition × theme
+
+// ─────────────────────────────────────────────────────────────
+// PHOTO LIBRARY  — Unsplash photos chosen per condition × theme
 // Each URL is a direct Unsplash image with w=1600 for quality
 // ─────────────────────────────────────────────────────────────
 const photos = {
@@ -1245,6 +1234,9 @@ renderScene(currentCond, currentTheme);
 updateStats();
 updateClock();
 setInterval(updateClock, 1000);
+// Set footer version
+const _fv = document.getElementById('footerVersion');
+if (_fv) _fv.textContent = 'v' + APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════════
 // SETUP PANEL
@@ -2856,6 +2848,14 @@ function saveAiSettings() {
   renderMainForecast();
 }
 
+// ── VERSION BANNER ────────────────────────────────────────────
+if (window._showUpdateBanner) {
+  setTimeout(() => {
+    const b = document.getElementById('update-banner');
+    if (b) b.classList.add('show');
+  }, 800);
+}
+
 // Hook the AI tab into the existing tab switcher
 (function() {
   const _origAi = renderSetupTab;
@@ -2869,16 +2869,6 @@ function saveAiSettings() {
     _origAi(tab);
   };
 })();
-// ── VERSION BANNER ────────────────────────────────────────────
-// Show the update banner if a new version was detected on load
-if (window._showUpdateBanner) {
-  requestAnimationFrame(() => {
-    setTimeout(() => {
-      const b = document.getElementById('update-banner');
-      if (b) b.classList.add('show');
-    }, 800);
-  });
-}
 </script>
 </body>
 </html>
