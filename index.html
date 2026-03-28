@@ -909,7 +909,7 @@
 <script>
 // ── APP VERSION — bump this string every time you deploy ───────
 // Format: YYYY-MM-DD.N
-const APP_VERSION = '2026-03-28.2';
+const APP_VERSION = '2026-03-28.1';
 (function() {
   const stored = localStorage.getItem('skywatcher_version');
   if (stored && stored !== APP_VERSION) { window._showUpdateBanner = true; }
@@ -2482,7 +2482,7 @@ async function fetchWeather() {
       + '&apiKey='         + encodeURIComponent(cfg.apiKey)
       + '&_t='             + Date.now();
 
-    const res = await fetch(url, { cache: 'no-store', headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' } });
+    const res = await fetch(url); // timestamp param &_t= above already busts cache safely
     if (!res.ok) { console.error('Skywatcher: API HTTP error', res.status, res.statusText); return; }
 
     const json = await res.json();
