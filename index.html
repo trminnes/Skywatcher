@@ -678,7 +678,7 @@
 
 <div id="update-banner">
   <span class="ub-msg">🔄 Skywatcher updated! Reload for the latest version.</span>
-  <button class="ub-reload" onclick="window.location.reload(true)">Reload Now</button>
+  <button class="ub-reload" onclick="window.location.href = window.location.href.split('?')[0] + '?v=' + Date.now()">Reload Now</button>
   <button class="ub-dismiss" onclick="document.getElementById('update-banner').classList.remove('show')" title="Dismiss">✕</button>
 </div>
 <div id="bg-photo"></div>
@@ -909,7 +909,7 @@
 <script>
 // ── APP VERSION — bump this string every time you deploy ───────
 // Format: YYYY-MM-DD.N
-const APP_VERSION = '2026-03-28.2';
+const APP_VERSION = '2026-03-28.1';
 (function() {
   const stored = localStorage.getItem('skywatcher_version');
   if (stored && stored !== APP_VERSION) { window._showUpdateBanner = true; }
